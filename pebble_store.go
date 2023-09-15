@@ -53,6 +53,10 @@ func NewPebbleStore(path string, logger pebble.Logger, cfg *PebbleDBConfig) (*Pe
 
 // FirstIndex returns the first index written. 0 for no entries.
 func (ps *PebbleStore) FirstIndex() (uint64, error) {
+	if ps.isclosed() {
+		return 0, pebble.ErrClosed
+	}
+
 	iter, err := ps.db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return 0, err
@@ -68,6 +72,10 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 
 // LastIndex returns the last index written. 0 for no entries.
 func (ps *PebbleStore) LastIndex() (uint64, error) {
+	if ps.isclosed() {
+		return 0, pebble.ErrClosed
+	}
+
 	iter, err := ps.db.NewIter(&pebble.IterOptions{})
 	if err != nil {
 		return 0, err
@@ -83,6 +91,10 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 
 // GetLog gets a log entry at a given index.
 func (ps *PebbleStore) GetLog(index uint64, log *raft.Log) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	key := ps.buildKey(dbLogs, uint64ToBytes(index))
 
 	val, err := ps.getBytes(key)
@@ -95,11 +107,19 @@ func (ps *PebbleStore) GetLog(index uint64, log *raft.Log) error {
 
 // StoreLog stores a log entry.
 func (ps *PebbleStore) StoreLog(log *raft.Log) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	return ps.StoreLogs([]*raft.Log{log})
 }
 
 // StoreLogs stores multiple log entries. By default the logs stored may not be contiguous with previous logs (i.e. may have a gap in Index since the last log written). If an implementation can't tolerate this it may optionally implement `MonotonicLogStore` to indicate that this is not allowed. This changes Raft's behaviour after restoring a user snapshot to remove all previous logs instead of relying on a "gap" to signal the discontinuity between logs before the snapshot and logs after.
 func (ps *PebbleStore) StoreLogs(logs []*raft.Log) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	batch := ps.db.NewBatch()
 	defer batch.Close()
 
@@ -120,6 +140,10 @@ func (ps *PebbleStore) StoreLogs(logs []*raft.Log) error {
 
 // DeleteRange deletes a range of log entries, [min, max]. The range is inclusive.
 func (ps *PebbleStore) DeleteRange(min, max uint64) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	minKey := uint64ToBytes(min)
 	maxKey := uint64ToBytes(max + 1)
 
@@ -152,11 +176,19 @@ func (ps *PebbleStore) DeleteRange(min, max uint64) error {
 
 // Set is used to set a key/value set outside of the raft log
 func (ps *PebbleStore) Set(key, val []byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	return ps.db.Set(ps.buildKey(dbConf, key), val, ps.syncwo)
 }
 
 // Get is used to retrieve a value from the k/v store by key
 func (ps *PebbleStore) Get(key []byte) ([]byte, error) {
+	if ps.isclosed() {
+		return nil, pebble.ErrClosed
+	}
+
 	val, err := ps.getBytes(ps.buildKey(dbConf, key))
 	if err != nil {
 		return nil, err
@@ -167,11 +199,19 @@ func (ps *PebbleStore) Get(key []byte) ([]byte, error) {
 
 // SetUint64 is like Set, but handles uint64 values
 func (ps *PebbleStore) SetUint64(key []byte, val uint64) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
 	return ps.db.Set(ps.buildKey(def, key), uint64ToBytes(val), ps.syncwo)
 }
 
 // GetUint64 is like Get, but handles uint64 values
 func (ps *PebbleStore) GetUint64(key []byte) (uint64, error) {
+	if ps.isclosed() {
+		return 0, pebble.ErrClosed
+	}
+
 	val, err := ps.getBytes(ps.buildKey(def, key))
 	if err != nil {
 		return 0, err
@@ -207,6 +247,10 @@ func (ps *PebbleStore) getBytes(key []byte) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func (ps *PebbleStore) isclosed() bool {
+	return ps.closed.Load()
 }
 
 func (ps *PebbleStore) Close() error {

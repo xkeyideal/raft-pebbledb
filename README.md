@@ -1,7 +1,7 @@
 raft-pebbledb
 ===========
 
-This implementation uses the maintained version of PebbleDB, [PebbleDB](https://github.com/cockroachdb/pebble). This is the primary version of `raft-pebbledb` and should be used whenever possible. 
+This implementation uses the maintained version of [PebbleDB](https://github.com/cockroachdb/pebble). This is the primary version of `raft-pebbledb` and should be used whenever possible. 
 
 There is no breaking API change to the library. However, there is the potential for disk format incompatibilities so it was decided to be conservative and making it a separate import path. . 
 
