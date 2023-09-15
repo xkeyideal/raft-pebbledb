@@ -33,7 +33,7 @@ func NewPebbleStore(path string, logger pebble.Logger, cfg *PebbleDBConfig) (*Pe
 		cfg = DefaultPebbleDBConfig()
 	}
 
-	db, err := openPebbleDB(cfg, path, logger)
+	db, err := OpenPebbleDB(cfg, path, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (ps *PebbleStore) Sync() error {
 	return ps.db.Flush()
 }
 
-func openPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebble.DB, error) {
+func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebble.DB, error) {
 	blockSize := cfg.KVBlockSize
 	levelSizeMultiplier := cfg.KVTargetFileSizeMultiplier
 	sz := cfg.KVTargetFileSizeBase
