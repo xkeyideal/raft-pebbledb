@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/hashicorp/raft"
 )
 
@@ -254,7 +253,7 @@ func TestPebbleStore_Set_Get(t *testing.T) {
 	defer os.Remove(store.path)
 
 	// Returns error on non-existent key
-	if _, err := store.Get([]byte("bad")); err != pebble.ErrNotFound {
+	if _, err := store.Get([]byte("bad")); err != ErrKeyNotFound {
 		t.Fatalf("expected not found error, got: %q", err)
 	}
 
@@ -281,7 +280,7 @@ func TestPebbleStore_SetUint64_GetUint64(t *testing.T) {
 	defer os.Remove(store.path)
 
 	// Returns error on non-existent key
-	if _, err := store.GetUint64([]byte("bad")); err != pebble.ErrNotFound {
+	if _, err := store.GetUint64([]byte("bad")); err != nil {
 		t.Fatalf("expected not found error, got: %q", err)
 	}
 

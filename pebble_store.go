@@ -61,7 +61,9 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter, err := ps.db.NewIter(&pebble.IterOptions{})
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
+		LowerBound: dbLogs,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -71,7 +73,12 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 		return 0, nil
 	}
 
-	return bytesToUint64(ps.dblogKey(iter.Key())), nil
+	key := iter.Key()
+	if len(key) == 0 {
+		return 0, nil
+	}
+
+	return bytesToUint64(ps.dblogKey(key)), nil
 }
 
 // LastIndex returns the last index written. 0 for no entries.
@@ -80,7 +87,9 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter, err := ps.db.NewIter(&pebble.IterOptions{})
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
+		LowerBound: dbLogs,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -90,7 +99,12 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 		return 0, nil
 	}
 
-	return bytesToUint64(ps.dblogKey(iter.Key())), nil
+	key := iter.Key()
+	if len(key) == 0 {
+		return 0, nil
+	}
+
+	return bytesToUint64(ps.dblogKey(key)), nil
 }
 
 // GetLog gets a log entry at a given index.
