@@ -1,6 +1,7 @@
 package raftpebbledb
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -15,6 +16,9 @@ var (
 	dbLogs = []byte("__logs__")
 	dbConf = []byte("__conf__")
 	def    = []byte("__def__")
+
+	// An error indicating a given key does not exist
+	ErrKeyNotFound = errors.New("not found")
 )
 
 type PebbleStore struct {
@@ -98,7 +102,11 @@ func (ps *PebbleStore) GetLog(index uint64, log *raft.Log) error {
 	key := ps.buildKey(dbLogs, uint64ToBytes(index))
 
 	val, err := ps.getBytes(key)
-	if err == pebble.ErrNotFound {
+	if err != nil {
+		return err
+	}
+
+	if len(val) == 0 {
 		return raft.ErrLogNotFound
 	}
 
@@ -194,6 +202,10 @@ func (ps *PebbleStore) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if len(val) == 0 {
+		return nil, ErrKeyNotFound
+	}
+
 	return val, nil
 }
 
@@ -217,6 +229,10 @@ func (ps *PebbleStore) GetUint64(key []byte) (uint64, error) {
 		return 0, err
 	}
 
+	if len(val) == 0 {
+		return 0, nil
+	}
+
 	return bytesToUint64(val), nil
 }
 
@@ -234,6 +250,11 @@ func (ps *PebbleStore) getBytes(key []byte) ([]byte, error) {
 	}
 
 	val, closer, err := ps.db.Get(key)
+	// 查询的key不存在，返回空值
+	if err == pebble.ErrNotFound {
+		return []byte{}, nil
+	}
+
 	if err != nil {
 		return nil, err
 	}
