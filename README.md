@@ -1,3 +1,5 @@
+Warning: Don't use it, restart hashicorp/raft cluster nodes will lost pebbledb data in my tests. And I don't know why it ???
+
 raft-pebbledb
 ===========
 
