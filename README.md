@@ -1,15 +1,19 @@
-Warning: Don't use it, restart hashicorp/raft cluster nodes will lost pebbledb data in my tests. And I don't know why it ???
-
 raft-pebbledb
 ===========
 
 This implementation uses the maintained version of [PebbleDB](https://github.com/cockroachdb/pebble). This is the primary version of `raft-pebbledb` and should be used whenever possible. 
 
-There is no breaking API change to the library. However, there is the potential for disk format incompatibilities so it was decided to be conservative and making it a separate import path. . 
+There is no breaking API change to the library. However, there is the potential for disk format incompatibilities so it was decided to be conservative and making it a separate import path.
+
+Cautions:
+
+1. `raft-pebbledb` write kv datas, use `pebble.Sync` WriteOptions which synchronize to disk.
+2. if use `pebble.NoSync` WriteOptions which do not synchronize to disk, maybe lost data when the program crashed suddenly.
+3. if we call `Flush()` before exit process for flush datas to disk, use `pebble.NoSync` WriteOptions will not be lost datas.
 
 ## Benchmark
 
-PebbleDB
+PebbleDB(NoSync)
 
 ```
 goos: darwin
@@ -28,6 +32,27 @@ BenchmarkPebbleStore_SetUint64-8             186           5953613 ns/op
 BenchmarkPebbleStore_GetUint64-8         3385880               367.1 ns/op
 PASS
 ok      github.com/xkeyideal/raft-pebbledb      30.014s
+```
+
+PebbleDB(Sync)
+
+```
+goos: darwin
+goarch: amd64
+pkg: github.com/xkeyideal/raft-pebbledb
+cpu: Intel(R) Core(TM) i7-7700 CPU @ 3.60GHz
+BenchmarkPebbleStore_FirstIndex-8        1977333               587.7 ns/op
+BenchmarkPebbleStore_LastIndex-8         1832170               706.3 ns/op
+BenchmarkPebbleStore_GetLog-8             349820              2972 ns/op
+BenchmarkPebbleStore_StoreLog-8              219           5293872 ns/op
+BenchmarkPebbleStore_StoreLogs-8             223           5189428 ns/op
+BenchmarkPebbleStore_DeleteRange-8           207           6649486 ns/op
+BenchmarkPebbleStore_Set-8                   214           5460250 ns/op
+BenchmarkPebbleStore_Get-8               2909061               365.2 ns/op
+BenchmarkPebbleStore_SetUint64-8             214           5297888 ns/op
+BenchmarkPebbleStore_GetUint64-8         3130579               380.3 ns/op
+PASS
+ok      github.com/xkeyideal/raft-pebbledb      22.785s
 ```
 
 [BoltDB](https://github.com/hashicorp/raft-boltdb)

@@ -26,9 +26,6 @@ type PebbleStore struct {
 	logger pebble.Logger
 	db     *pebble.DB
 
-	wo     *pebble.WriteOptions
-	syncwo *pebble.WriteOptions
-
 	closed *atomic.Bool
 }
 
@@ -46,9 +43,6 @@ func NewPebbleStore(path string, logger pebble.Logger, cfg *PebbleDBConfig) (*Pe
 		path:   path,
 		logger: logger,
 		db:     db,
-
-		wo:     &pebble.WriteOptions{Sync: false},
-		syncwo: &pebble.WriteOptions{Sync: true},
 		closed: atomic.NewBool(false),
 	}
 
@@ -152,12 +146,12 @@ func (ps *PebbleStore) StoreLogs(logs []*raft.Log) error {
 			return err
 		}
 
-		if err := batch.Set(ps.buildKey(dbLogs, key), val.Bytes(), ps.wo); err != nil {
+		if err := batch.Set(ps.buildKey(dbLogs, key), val.Bytes(), pebble.Sync); err != nil {
 			return err
 		}
 	}
 
-	return batch.Commit(ps.syncwo)
+	return batch.Commit(pebble.Sync)
 }
 
 // DeleteRange deletes a range of log entries, [min, max]. The range is inclusive.
@@ -169,7 +163,7 @@ func (ps *PebbleStore) DeleteRange(min, max uint64) error {
 	minKey := uint64ToBytes(min)
 	maxKey := uint64ToBytes(max + 1)
 
-	return ps.db.DeleteRange(ps.buildKey(dbLogs, minKey), ps.buildKey(dbLogs, maxKey), ps.wo)
+	return ps.db.DeleteRange(ps.buildKey(dbLogs, minKey), ps.buildKey(dbLogs, maxKey), pebble.Sync)
 
 	// iter, err := ps.db.NewIter(&pebble.IterOptions{
 	// 	LowerBound: ps.buildKey(dbLogs, minKey),
@@ -190,10 +184,10 @@ func (ps *PebbleStore) DeleteRange(min, max uint64) error {
 	// 		break
 	// 	}
 
-	// 	batch.Delete(key, ps.wo)
+	// 	batch.Delete(key, pebble.Sync)
 	// }
 
-	// return batch.Commit(ps.syncwo)
+	// return batch.Commit(pebble.Sync)
 }
 
 // Set is used to set a key/value set outside of the raft log
@@ -202,7 +196,7 @@ func (ps *PebbleStore) Set(key, val []byte) error {
 		return pebble.ErrClosed
 	}
 
-	return ps.db.Set(ps.buildKey(dbConf, key), val, ps.syncwo)
+	return ps.db.Set(ps.buildKey(dbConf, key), val, pebble.Sync)
 }
 
 // Get is used to retrieve a value from the k/v store by key
@@ -229,7 +223,7 @@ func (ps *PebbleStore) SetUint64(key []byte, val uint64) error {
 		return pebble.ErrClosed
 	}
 
-	return ps.db.Set(ps.buildKey(def, key), uint64ToBytes(val), ps.syncwo)
+	return ps.db.Set(ps.buildKey(def, key), uint64ToBytes(val), pebble.Sync)
 }
 
 // GetUint64 is like Get, but handles uint64 values
