@@ -2,7 +2,7 @@ package raftpebbledb
 
 type PebbleDBConfig struct {
 	KVLRUCacheSize                   int64
-	KVWriteBufferSize                uint64
+	KVWriteBufferSize                int
 	KVMaxWriteBufferNumber           int
 	KVLevel0FileNumCompactionTrigger int
 	KVLevel0StopWritesTrigger        int

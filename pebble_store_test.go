@@ -23,7 +23,7 @@ func (log *Logger) Fatalf(format string, args ...interface{}) {
 }
 
 func testPebbleStore(t testing.TB) *PebbleStore {
-	fh, err := ioutil.TempFile("", "bolt")
+	fh, err := ioutil.TempFile("", "pebble")
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}

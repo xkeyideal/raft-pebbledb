@@ -55,11 +55,11 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter, err := ps.db.NewIter(&pebble.IterOptions{
+	iter := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
-	if err != nil {
-		return 0, err
+	if !iter.Valid() {
+		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
 	defer iter.Close()
 
@@ -81,11 +81,11 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter, err := ps.db.NewIter(&pebble.IterOptions{
+	iter := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
-	if err != nil {
-		return 0, err
+	if !iter.Valid() {
+		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
 	defer iter.Close()
 
