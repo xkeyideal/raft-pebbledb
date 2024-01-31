@@ -58,10 +58,11 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 	iter := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+	defer iter.Close()
+
 	if !iter.Valid() {
 		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
-	defer iter.Close()
 
 	if !iter.First() {
 		return 0, nil
@@ -84,10 +85,11 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 	iter := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+	defer iter.Close()
+
 	if !iter.Valid() {
 		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
-	defer iter.Close()
 
 	if !iter.Last() {
 		return 0, nil
@@ -165,13 +167,14 @@ func (ps *PebbleStore) DeleteRange(min, max uint64) error {
 
 	return ps.db.DeleteRange(ps.buildKey(dbLogs, minKey), ps.buildKey(dbLogs, maxKey), pebble.Sync)
 
-	// iter, err := ps.db.NewIter(&pebble.IterOptions{
+	// iter := ps.db.NewIter(&pebble.IterOptions{
 	// 	LowerBound: ps.buildKey(dbLogs, minKey),
 	// })
-	// if err != nil {
-	// 	return err
-	// }
 	// defer iter.Close()
+
+	// if !iter.Valid() {
+	// 	return 0, errors.New("NewIter returns an iterator that is unpositioned")
+	// }
 
 	// batch := ps.db.NewBatch()
 	// defer batch.Close()
