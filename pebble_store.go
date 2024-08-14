@@ -55,9 +55,14 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter := ps.db.NewIter(&pebble.IterOptions{
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+
+	if err != nil {
+		return 0, err
+	}
+
 	defer iter.Close()
 
 	if !iter.Valid() {
@@ -82,9 +87,14 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 		return 0, pebble.ErrClosed
 	}
 
-	iter := ps.db.NewIter(&pebble.IterOptions{
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+
+	if err != nil {
+		return 0, err
+	}
+
 	defer iter.Close()
 
 	if !iter.Valid() {
