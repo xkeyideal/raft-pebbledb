@@ -65,12 +65,12 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 
 	defer iter.Close()
 
-	if !iter.Valid() {
-		return 0, errors.New("NewIter returns an iterator that is unpositioned")
-	}
-
 	if !iter.First() {
 		return 0, nil
+	}
+
+	if !iter.Valid() {
+		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
 
 	key := iter.Key()
@@ -97,12 +97,12 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 
 	defer iter.Close()
 
-	if !iter.Valid() {
-		return 0, errors.New("NewIter returns an iterator that is unpositioned")
-	}
-
 	if !iter.Last() {
 		return 0, nil
+	}
+
+	if !iter.Valid() {
+		return 0, errors.New("NewIter returns an iterator that is unpositioned")
 	}
 
 	key := iter.Key()

@@ -79,5 +79,6 @@ raft-manager
 /test
 testdata
 data
+pebbledb
 internal/schedule/*.log
 internal/gossip/main/main

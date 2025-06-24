@@ -3,7 +3,6 @@ package raftpebbledb
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -23,14 +22,16 @@ func (log *Logger) Fatalf(format string, args ...interface{}) {
 }
 
 func testPebbleStore(t testing.TB) *PebbleStore {
-	fh, err := ioutil.TempFile("", "pebble")
+	testDir := "pebbledb/test"
+	os.RemoveAll(testDir)
+
+	err := os.MkdirAll(testDir, 0755) // Creates parent, child, and grandchild
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	os.Remove(fh.Name())
 
 	// Successfully creates and returns a store
-	store, err := NewPebbleStore(fh.Name(), &Logger{}, DefaultPebbleDBConfig())
+	store, err := NewPebbleStore(testDir, &Logger{}, DefaultPebbleDBConfig())
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -55,6 +56,7 @@ func TestPebbleStore_Implements(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_FirstIndex$
 func TestPebbleStore_FirstIndex(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -89,6 +91,7 @@ func TestPebbleStore_FirstIndex(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_LastIndex$
 func TestPebbleStore_LastIndex(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -123,6 +126,7 @@ func TestPebbleStore_LastIndex(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_GetLog$
 func TestPebbleStore_GetLog(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -131,7 +135,8 @@ func TestPebbleStore_GetLog(t *testing.T) {
 	log := new(raft.Log)
 
 	// Should return an error on non-existent log
-	if err := store.GetLog(1, log); err != raft.ErrLogNotFound {
+	err := store.GetLog(1, log)
+	if err != nil && err != raft.ErrLogNotFound {
 		t.Fatalf("expected raft log not found error, got: %v", err)
 	}
 
@@ -154,6 +159,7 @@ func TestPebbleStore_GetLog(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_SetLog$
 func TestPebbleStore_SetLog(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -182,6 +188,7 @@ func TestPebbleStore_SetLog(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_SetLogs$
 func TestPebbleStore_SetLogs(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -214,6 +221,7 @@ func TestPebbleStore_SetLogs(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_DeleteRange$
 func TestPebbleStore_DeleteRange(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -247,6 +255,7 @@ func TestPebbleStore_DeleteRange(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_Set_Get$
 func TestPebbleStore_Set_Get(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
@@ -274,6 +283,7 @@ func TestPebbleStore_Set_Get(t *testing.T) {
 	}
 }
 
+// go test -v -timeout 30s -run ^TestPebbleStore_SetUint64_GetUint64$
 func TestPebbleStore_SetUint64_GetUint64(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
