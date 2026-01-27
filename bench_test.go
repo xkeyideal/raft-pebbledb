@@ -7,14 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	raftbench "github.com/hashicorp/raft/bench"
 )
 
 func BenchmarkPebbleStore_FirstIndex(b *testing.B) {
 	store := testPebbleStore(b)
 	defer store.Close()
-	defer os.Remove(store.path)
 
 	raftbench.FirstIndex(b, store)
 }
@@ -92,8 +91,8 @@ func BenchmarkPebbleStore_GetUint64(b *testing.B) {
 }
 
 func newPebbledb() *PebbleStore {
-	dir := filepath.Join("/Users/xkey/test/", "pebble-sync-test")
-	// os.RemoveAll(dir)
+	dir := filepath.Join(os.TempDir(), "pebble-sync-test")
+	os.RemoveAll(dir)
 
 	store, err := NewPebbleStore(dir, &Logger{}, DefaultPebbleDBConfig())
 	if err != nil {

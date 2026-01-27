@@ -1,9 +1,33 @@
 raft-pebbledb
 ===========
 
-This implementation uses the maintained version of [PebbleDB](https://github.com/cockroachdb/pebble). This is the primary version of `raft-pebbledb` and should be used whenever possible. 
+This implementation uses [PebbleDB v2.x](https://github.com/cockroachdb/pebble), a LevelDB/RocksDB inspired key-value store focused on performance and internal usage by CockroachDB.
 
-There is no breaking API change to the library. However, there is the potential for disk format incompatibilities so it was decided to be conservative and making it a separate import path.
+## Version Information
+
+**Current Pebble Version**: v2.1.4
+
+This library uses Pebble v2.x, which includes significant improvements and optimizations over v1.x. Please note the following important compatibility considerations:
+
+### Format Compatibility Warning
+
+⚠️ **Pebble v2.x does not support the oldest on-disk formats from v1.x**
+
+If you are upgrading from a previous version of this library that used Pebble v1.x:
+- **New deployments**: No action needed - v2.x will work out of the box
+- **Existing deployments with data**: You are responsible for migrating your database format before upgrading
+  - See [Pebble's Format Major Versions documentation](https://github.com/cockroachdb/pebble#format-major-versions) for migration guidance
+  - Format migration is a one-way operation and cannot be reversed
+  - Test the migration process in a non-production environment first
+
+### API Stability
+
+The raft-pebbledb library API remains stable. This upgrade only affects:
+- Internal Pebble dependency (import path changes to `github.com/cockroachdb/pebble/v2`)
+- Database disk format compatibility (as noted above)
+- No breaking changes to raft-pebbledb's public API
+
+## Usage
 
 Cautions:
 
@@ -13,46 +37,41 @@ Cautions:
 
 ## Benchmark
 
-PebbleDB(NoSync)
+Benchmarks performed with Pebble v2.1.4 on Apple M4 (2026):
+
+### PebbleDB with Sync
 
 ```
 goos: darwin
-goarch: amd64
+goarch: arm64
 pkg: github.com/xkeyideal/raft-pebbledb
-cpu: Intel(R) Core(TM) i7-7700 CPU @ 3.60GHz
-BenchmarkPebbleStore_FirstIndex-8        2176722               515.1 ns/op
-BenchmarkPebbleStore_LastIndex-8         1788973               632.8 ns/op
-BenchmarkPebbleStore_GetLog-8             548466              2165 ns/op
-BenchmarkPebbleStore_StoreLog-8              194           5865119 ns/op
-BenchmarkPebbleStore_StoreLogs-8             194           5840854 ns/op
-BenchmarkPebbleStore_DeleteRange-8        345982              5076 ns/op
-BenchmarkPebbleStore_Set-8                   196           5832603 ns/op
-BenchmarkPebbleStore_Get-8               3414891               341.0 ns/op
-BenchmarkPebbleStore_SetUint64-8             186           5953613 ns/op
-BenchmarkPebbleStore_GetUint64-8         3385880               367.1 ns/op
+cpu: Apple M4
+BenchmarkPebbleStore_FirstIndex-10       7217354               477.1 ns/op             0 B/op          0 allocs/op
+BenchmarkPebbleStore_LastIndex-10        6966156               499.7 ns/op            80 B/op          1 allocs/op
+BenchmarkPebbleStore_GetLog-10           3441195               996.4 ns/op          1218 B/op         35 allocs/op
+BenchmarkPebbleStore_StoreLog-10             801           3989189 ns/op            2473 B/op         28 allocs/op
+BenchmarkPebbleStore_StoreLogs-10            836           3844470 ns/op            5333 B/op         76 allocs/op
+BenchmarkPebbleStore_DeleteRange-10          878           3865595 ns/op             840 B/op          5 allocs/op
+BenchmarkPebbleStore_Set-10                  915           3833800 ns/op             667 B/op          4 allocs/op
+BenchmarkPebbleStore_Get-10             11729859               282.0 ns/op            20 B/op          3 allocs/op
+BenchmarkPebbleStore_SetUint64-10            931           3773065 ns/op             542 B/op          3 allocs/op
+BenchmarkPebbleStore_GetUint64-10       11227593               288.3 ns/op            32 B/op          3 allocs/op
+Benchmark_PebbleSync_Single-10               820           3841499 ns/op            3911 B/op          5 allocs/op
+Benchmark_PebbleSync_Batch-10             360706              9372 ns/op            6575 B/op          4 allocs/op
 PASS
-ok      github.com/xkeyideal/raft-pebbledb      30.014s
+ok      github.com/xkeyideal/raft-pebbledb      63.176s
 ```
 
-PebbleDB(Sync)
+### PebbleDB with NoSync
 
 ```
 goos: darwin
-goarch: amd64
+goarch: arm64
 pkg: github.com/xkeyideal/raft-pebbledb
-cpu: Intel(R) Core(TM) i7-7700 CPU @ 3.60GHz
-BenchmarkPebbleStore_FirstIndex-8        1977333               587.7 ns/op
-BenchmarkPebbleStore_LastIndex-8         1832170               706.3 ns/op
-BenchmarkPebbleStore_GetLog-8             349820              2972 ns/op
-BenchmarkPebbleStore_StoreLog-8              219           5293872 ns/op
-BenchmarkPebbleStore_StoreLogs-8             223           5189428 ns/op
-BenchmarkPebbleStore_DeleteRange-8           207           6649486 ns/op
-BenchmarkPebbleStore_Set-8                   214           5460250 ns/op
-BenchmarkPebbleStore_Get-8               2909061               365.2 ns/op
-BenchmarkPebbleStore_SetUint64-8             214           5297888 ns/op
-BenchmarkPebbleStore_GetUint64-8         3130579               380.3 ns/op
+cpu: Apple M4
+Benchmark_PebbleNoSync_Single-10          414559             12162 ns/op            2542 B/op          4 allocs/op
+Benchmark_PebbleNoSync_Batch-10           323400             17346 ns/op            6999 B/op          4 allocs/op
 PASS
-ok      github.com/xkeyideal/raft-pebbledb      22.785s
 ```
 
 [BoltDB](https://github.com/hashicorp/raft-boltdb)

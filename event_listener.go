@@ -1,7 +1,7 @@
 package raftpebbledb
 
 import (
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 type eventListener struct {

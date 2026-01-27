@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/atomic"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hashicorp/raft"
 )
 
@@ -319,16 +319,20 @@ func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebbl
 	blockSize := cfg.KVBlockSize
 	levelSizeMultiplier := cfg.KVTargetFileSizeMultiplier
 	sz := cfg.KVTargetFileSizeBase
-	lopts := make([]pebble.LevelOptions, 0)
 
-	for l := 0; l < cfg.KVNumOfLevels; l++ {
-		opt := pebble.LevelOptions{
-			Compression:    pebble.DefaultCompression,
-			BlockSize:      blockSize,
-			TargetFileSize: sz,
+	// Configure level options - v2 uses fixed-size array
+	var lopts [7]pebble.LevelOptions
+	for l := 0; l < cfg.KVNumOfLevels && l < 7; l++ {
+		lopts[l] = pebble.LevelOptions{
+			BlockSize: blockSize,
 		}
+	}
+
+	// Configure target file sizes - separate from LevelOptions in v2
+	var targetFileSizes [7]int64
+	for l := 0; l < cfg.KVNumOfLevels && l < 7; l++ {
+		targetFileSizes[l] = int64(sz)
 		sz = sz * levelSizeMultiplier
-		lopts = append(lopts, opt)
 	}
 
 	dataPath := filepath.Join(dir, "data")
@@ -345,6 +349,7 @@ func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebbl
 	opts := &pebble.Options{
 		BytesPerSync:                cfg.KVBytesPerSync,
 		Levels:                      lopts,
+		TargetFileSizes:             targetFileSizes,
 		MaxManifestFileSize:         cfg.KVMaxManifestFileSize,
 		MemTableSize:                cfg.KVWriteBufferSize,
 		MemTableStopWritesThreshold: cfg.KVMaxWriteBufferNumber,
@@ -355,8 +360,12 @@ func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebbl
 		WALDir:                      walPath,
 		Logger:                      logger,
 		MaxOpenFiles:                cfg.KVMaxOpenFiles,
-		MaxConcurrentCompactions:    func() int { return cfg.KVMaxConcurrentCompactions },
 		WALBytesPerSync:             cfg.KVWALBytesPerSync,
+		// Set compaction concurrency range (min, max) - replaces MaxConcurrentCompactions
+		CompactionConcurrencyRange: func() (int, int) {
+			cc := cfg.KVMaxConcurrentCompactions
+			return cc, cc // min and max are the same (no dynamic scaling)
+		},
 	}
 
 	event := &eventListener{
