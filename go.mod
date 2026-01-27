@@ -1,4 +1,4 @@
-module github.com/xkeyideal/raft-pebbledb
+module github.com/xkeyideal/raft-pebbledb/v2
 
 go 1.25
 
