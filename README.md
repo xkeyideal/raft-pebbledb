@@ -54,6 +54,72 @@ Run with a specified directory (so you can inspect `data/` and `wal/`):
 go run ./examples/kv -dir ./tmp/raftpebbledb-demo
 ```
 
+## Extended KV API
+
+In addition to the standard Raft LogStore/StableStore interfaces, this library provides extended KV operations:
+
+### Single Key Operations
+
+```go
+// Delete a key
+err := store.Delete([]byte("mykey"))
+
+// Check if a key exists (without retrieving value - more efficient)
+exists, err := store.Exists([]byte("mykey"))
+```
+
+### Batch Operations (Atomic)
+
+```go
+// Set multiple keys atomically
+err := store.SetBatch(map[string][]byte{
+    "key1": []byte("value1"),
+    "key2": []byte("value2"),
+})
+
+// Delete multiple keys atomically
+err := store.DeleteBatch([][]byte{
+    []byte("key1"),
+    []byte("key2"),
+})
+
+// Delete a range of keys [start, end)
+err := store.KVDeleteRange([]byte("prefix:a"), []byte("prefix:z"))
+```
+
+### Range Scan
+
+```go
+// Scan keys in range [start, end)
+err := store.Scan([]byte("user:"), []byte("user:\xff"), func(key, value []byte) bool {
+    fmt.Printf("%s = %s\n", key, value)
+    return true // return false to stop iteration
+})
+
+// Scan keys with a prefix
+err := store.ScanPrefix([]byte("user:"), func(key, value []byte) bool {
+    fmt.Printf("%s = %s\n", key, value)
+    return true
+})
+```
+
+### Maintenance Operations
+
+```go
+// Create a point-in-time snapshot (for backup)
+err := store.Checkpoint("/path/to/backup")
+
+// Manually trigger compaction for a key range
+err := store.Compact([]byte("start"), []byte("end"))
+
+// Get database metrics
+metrics := store.Metrics()
+fmt.Printf("Disk usage: %d bytes\n", metrics.DiskSpaceUsage())
+
+// Get database path
+path := store.DBPath()
+```
+
 ## Benchmark
 
 Benchmarks performed with Pebble v2.1.4 on Apple M4 (2026):

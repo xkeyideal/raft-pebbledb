@@ -1,6 +1,7 @@
 package raftpebbledb
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,8 +15,10 @@ import (
 var (
 	// Bucket names we perform transactions in
 	dbLogs = []byte("__logs__")
-	dbConf = []byte("__conf__")
-	def    = []byte("__def__")
+	// Upper bound for dbLogs iteration (next prefix after __logs__)
+	dbLogsUpperBound = []byte("__logs__\xff")
+	dbConf           = []byte("__conf__")
+	def              = []byte("__def__")
 
 	// An error indicating a given key does not exist
 	ErrKeyNotFound = errors.New("not found")
@@ -57,6 +60,7 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 
 	iter, err := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
+		UpperBound: dbLogsUpperBound,
 	})
 
 	if err != nil {
@@ -66,11 +70,17 @@ func (ps *PebbleStore) FirstIndex() (uint64, error) {
 	defer iter.Close()
 
 	if !iter.First() {
+		if err := iter.Error(); err != nil {
+			return 0, err
+		}
 		return 0, nil
 	}
 
 	if !iter.Valid() {
-		return 0, errors.New("NewIter returns an iterator that is unpositioned")
+		if err := iter.Error(); err != nil {
+			return 0, err
+		}
+		return 0, nil
 	}
 
 	key := iter.Key()
@@ -89,6 +99,7 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 
 	iter, err := ps.db.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
+		UpperBound: dbLogsUpperBound,
 	})
 
 	if err != nil {
@@ -98,11 +109,17 @@ func (ps *PebbleStore) LastIndex() (uint64, error) {
 	defer iter.Close()
 
 	if !iter.Last() {
+		if err := iter.Error(); err != nil {
+			return 0, err
+		}
 		return 0, nil
 	}
 
 	if !iter.Valid() {
-		return 0, errors.New("NewIter returns an iterator that is unpositioned")
+		if err := iter.Error(); err != nil {
+			return 0, err
+		}
+		return 0, nil
 	}
 
 	key := iter.Key()
@@ -257,8 +274,225 @@ func (ps *PebbleStore) GetUint64(key []byte) (uint64, error) {
 	return bytesToUint64(val), nil
 }
 
+// Delete removes a key from the k/v store
+func (ps *PebbleStore) Delete(key []byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	return ps.db.Delete(ps.buildKey(dbConf, key), pebble.Sync)
+}
+
+// Exists checks if a key exists in the k/v store without retrieving the value.
+// This is more efficient than Get when you only need to check existence.
+func (ps *PebbleStore) Exists(key []byte) (bool, error) {
+	if ps.isclosed() {
+		return false, pebble.ErrClosed
+	}
+
+	_, closer, err := ps.db.Get(ps.buildKey(dbConf, key))
+	if err == pebble.ErrNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	if err := closer.Close(); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// SetBatch atomically sets multiple key-value pairs.
+// This is more efficient than calling Set multiple times.
+func (ps *PebbleStore) SetBatch(kvs map[string][]byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	batch := ps.db.NewBatch()
+	defer batch.Close()
+
+	for k, v := range kvs {
+		if err := batch.Set(ps.buildKey(dbConf, []byte(k)), v, nil); err != nil {
+			return err
+		}
+	}
+
+	return batch.Commit(pebble.Sync)
+}
+
+// DeleteBatch atomically deletes multiple keys.
+// This is more efficient than calling Delete multiple times.
+func (ps *PebbleStore) DeleteBatch(keys [][]byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	batch := ps.db.NewBatch()
+	defer batch.Close()
+
+	for _, key := range keys {
+		if err := batch.Delete(ps.buildKey(dbConf, key), nil); err != nil {
+			return err
+		}
+	}
+
+	return batch.Commit(pebble.Sync)
+}
+
+// KVDeleteRange deletes all keys in the range [start, end).
+// The range is inclusive of start and exclusive of end.
+func (ps *PebbleStore) KVDeleteRange(start, end []byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	return ps.db.DeleteRange(
+		ps.buildKey(dbConf, start),
+		ps.buildKey(dbConf, end),
+		pebble.Sync,
+	)
+}
+
+// Scan iterates over all key-value pairs in the range [start, end) and calls
+// the callback function for each pair. If the callback returns false, iteration stops.
+// Pass nil for start to begin at the first key, and nil for end to iterate to the last key.
+func (ps *PebbleStore) Scan(start, end []byte, fn func(key, value []byte) bool) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	lowerBound := dbConf
+	upperBound := []byte("__conf__\xff") // upper bound for dbConf
+
+	if start != nil {
+		lowerBound = ps.buildKey(dbConf, start)
+	}
+	if end != nil {
+		upperBound = ps.buildKey(dbConf, end)
+	}
+
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		value := iter.Value()
+
+		// Strip the dbConf prefix from the key
+		userKey := key[len(dbConf):]
+
+		// Copy the values since they're only valid until the next iteration
+		keyCopy := make([]byte, len(userKey))
+		copy(keyCopy, userKey)
+
+		valueCopy := make([]byte, len(value))
+		copy(valueCopy, value)
+
+		if !fn(keyCopy, valueCopy) {
+			break
+		}
+	}
+
+	return iter.Error()
+}
+
+// ScanPrefix iterates over all key-value pairs with the given prefix and calls
+// the callback function for each pair. If the callback returns false, iteration stops.
+func (ps *PebbleStore) ScanPrefix(prefix []byte, fn func(key, value []byte) bool) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	lowerBound := ps.buildKey(dbConf, prefix)
+	// Create upper bound by incrementing the last byte of prefix
+	upperBound := make([]byte, len(lowerBound))
+	copy(upperBound, lowerBound)
+	upperBound[len(upperBound)-1]++
+
+	iter, err := ps.db.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		value := iter.Value()
+
+		// Strip the dbConf prefix from the key
+		userKey := key[len(dbConf):]
+
+		// Copy the values since they're only valid until the next iteration
+		keyCopy := make([]byte, len(userKey))
+		copy(keyCopy, userKey)
+
+		valueCopy := make([]byte, len(value))
+		copy(valueCopy, value)
+
+		if !fn(keyCopy, valueCopy) {
+			break
+		}
+	}
+
+	return iter.Error()
+}
+
+// Checkpoint creates a point-in-time snapshot of the database at the given directory.
+// The checkpoint can be opened as a read-only database for backup or inspection.
+func (ps *PebbleStore) Checkpoint(destDir string) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	return ps.db.Checkpoint(destDir, pebble.WithFlushedWAL())
+}
+
+// Compact manually triggers compaction for the given key range [start, end].
+// This can be useful for reclaiming space after many deletions.
+// Pass nil for both start and end to compact the entire database.
+func (ps *PebbleStore) Compact(start, end []byte) error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
+
+	ctx := context.Background()
+	return ps.db.Compact(ctx, start, end, true)
+}
+
+// Metrics returns the current database metrics including disk usage,
+// compaction statistics, and cache hit rates.
+func (ps *PebbleStore) Metrics() *pebble.Metrics {
+	if ps.isclosed() {
+		return nil
+	}
+
+	return ps.db.Metrics()
+}
+
+// DBPath returns the path to the database directory.
+func (ps *PebbleStore) DBPath() string {
+	return ps.path
+}
+
 func (ps *PebbleStore) buildKey(prefix, key []byte) []byte {
-	return append(prefix, key...)
+	// Create a new slice to avoid modifying the shared prefix backing array
+	result := make([]byte, len(prefix)+len(key))
+	copy(result, prefix)
+	copy(result[len(prefix):], key)
+	return result
 }
 
 func (ps *PebbleStore) dblogKey(key []byte) []byte {
@@ -303,8 +537,19 @@ func (ps *PebbleStore) Close() error {
 	ps.closed.Store(true) // set pebbledb closed
 
 	if ps.db != nil {
-		ps.db.Flush()
-		ps.db.Close()
+		if err := ps.db.Flush(); err != nil {
+			// Continue with close even if flush fails, but capture the error
+			closeErr := ps.db.Close()
+			ps.db = nil
+			if closeErr != nil {
+				return closeErr
+			}
+			return err
+		}
+		if err := ps.db.Close(); err != nil {
+			ps.db = nil
+			return err
+		}
 		ps.db = nil
 	}
 
@@ -312,29 +557,13 @@ func (ps *PebbleStore) Close() error {
 }
 
 func (ps *PebbleStore) Sync() error {
+	if ps.isclosed() {
+		return pebble.ErrClosed
+	}
 	return ps.db.Flush()
 }
 
 func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebble.DB, error) {
-	blockSize := cfg.KVBlockSize
-	levelSizeMultiplier := cfg.KVTargetFileSizeMultiplier
-	sz := cfg.KVTargetFileSizeBase
-
-	// Configure level options - v2 uses fixed-size array
-	var lopts [7]pebble.LevelOptions
-	for l := 0; l < cfg.KVNumOfLevels && l < 7; l++ {
-		lopts[l] = pebble.LevelOptions{
-			BlockSize: blockSize,
-		}
-	}
-
-	// Configure target file sizes - separate from LevelOptions in v2
-	var targetFileSizes [7]int64
-	for l := 0; l < cfg.KVNumOfLevels && l < 7; l++ {
-		targetFileSizes[l] = int64(sz)
-		sz = sz * levelSizeMultiplier
-	}
-
 	dataPath := filepath.Join(dir, "data")
 	if err := os.MkdirAll(dataPath, os.ModePerm); err != nil {
 		return nil, err
@@ -345,26 +574,49 @@ func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebbl
 		return nil, err
 	}
 
+	// Build level options with bloom filter, compression, and block settings
+	lopts := cfg.buildLevelOptions()
+	targetFileSizes := cfg.buildTargetFileSizes()
+
 	cache := pebble.NewCache(cfg.KVLRUCacheSize)
 	opts := &pebble.Options{
-		BytesPerSync:                cfg.KVBytesPerSync,
-		Levels:                      lopts,
-		TargetFileSizes:             targetFileSizes,
-		MaxManifestFileSize:         cfg.KVMaxManifestFileSize,
+		// Sync settings
+		BytesPerSync:    cfg.KVBytesPerSync,
+		WALBytesPerSync: cfg.KVWALBytesPerSync,
+
+		// Level configuration with bloom filter and compression
+		Levels:          lopts,
+		TargetFileSizes: targetFileSizes,
+
+		// MemTable settings
 		MemTableSize:                cfg.KVWriteBufferSize,
 		MemTableStopWritesThreshold: cfg.KVMaxWriteBufferNumber,
-		LBaseMaxBytes:               cfg.KVMaxBytesForLevelBase,
-		L0CompactionThreshold:       cfg.KVLevel0FileNumCompactionTrigger,
-		L0StopWritesThreshold:       cfg.KVLevel0StopWritesTrigger,
-		Cache:                       cache,
-		WALDir:                      walPath,
-		Logger:                      logger,
-		MaxOpenFiles:                cfg.KVMaxOpenFiles,
-		WALBytesPerSync:             cfg.KVWALBytesPerSync,
-		// Set compaction concurrency range (min, max) - replaces MaxConcurrentCompactions
+
+		// LSM tree settings
+		LBaseMaxBytes:         cfg.KVMaxBytesForLevelBase,
+		L0CompactionThreshold: cfg.KVLevel0FileNumCompactionTrigger,
+		L0StopWritesThreshold: cfg.KVLevel0StopWritesTrigger,
+
+		// File settings
+		MaxManifestFileSize: cfg.KVMaxManifestFileSize,
+		MaxOpenFiles:        cfg.KVMaxOpenFiles,
+
+		// Cache and WAL
+		Cache:  cache,
+		WALDir: walPath,
+		Logger: logger,
+
+		// Use the newest format for best performance and features
+		FormatMajorVersion: pebble.FormatNewest,
+
+		// Compaction concurrency (min, max)
 		CompactionConcurrencyRange: func() (int, int) {
 			cc := cfg.KVMaxConcurrentCompactions
-			return cc, cc // min and max are the same (no dynamic scaling)
+			// Allow some dynamic scaling: min is 1, max is configured value
+			if cc <= 1 {
+				return 1, 1
+			}
+			return 1, cc
 		},
 	}
 
@@ -393,6 +645,7 @@ func OpenPebbleDB(cfg *PebbleDBConfig, dir string, logger pebble.Logger) (*pebbl
 
 	db, err := pebble.Open(dataPath, opts)
 	if err != nil {
+		cache.Unref()
 		return nil, err
 	}
 	cache.Unref()

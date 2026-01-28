@@ -44,6 +44,7 @@ metadata:
 3. **创建 PebbleStore 并接入 Raft**
    - 最常见的接入方式：用同一个 `*raftpebbledb.PebbleStore` 同时作为 `LogStore` 和 `StableStore`：
      ```go
+     // 使用默认配置（基于 CockroachDB 生产调优）
      store, err := raftpebbledb.NewPebbleStore(raftDir, &pebbleLogger{}, nil)
      if err != nil { return err }
      defer store.Close()
@@ -55,17 +56,60 @@ metadata:
      r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, transport)
      if err != nil { return err }
      ```
+   - **配置选项**：提供三种预置配置：
+     ```go
+     // 默认配置（推荐大多数场景）
+     cfg := raftpebbledb.DefaultPebbleDBConfig()
+     
+     // 内存受限环境（32MB 缓存，16MB memtable）
+     cfg := raftpebbledb.LowMemoryPebbleDBConfig()
+     
+     // 高性能环境（512MB 缓存，128MB memtable）
+     cfg := raftpebbledb.HighPerformancePebbleDBConfig()
+     
+     store, err := raftpebbledb.NewPebbleStore(raftDir, logger, cfg)
+     ```
+   - **压缩选项**：
+     ```go
+     cfg := raftpebbledb.DefaultPebbleDBConfig()
+     cfg.KVCompression = raftpebbledb.CompressionZstd // 更高压缩率
+     // 或 CompressionSnappy（默认，更快）
+     // 或 CompressionNone（无压缩）
+     ```
 
 4. **落盘与退出策略**
    - 该库对 raft log / stable KV 写入默认使用 `pebble.Sync`（更安全，吞吐会低一些）。
    - 退出时确保调用 `Close()`；它会 `Flush()` 并 `Close()` DB。
    - 如你需要显式 flush，可调用 `Sync()`（内部执行 `db.Flush()`）。
 
-5. **路径与权限**
+5. **扩展 KV 操作**
+   除了 Raft 接口，该库还提供以下扩展 KV 方法：
+   ```go
+   // 单键操作
+   store.Delete(key)                  // 删除单个键
+   store.Exists(key)                  // 检查键是否存在（不获取值，更高效）
+   
+   // 批量操作（原子性，更高效）
+   store.SetBatch(map[string][]byte{"k1": v1, "k2": v2})
+   store.DeleteBatch([][]byte{key1, key2, key3})
+   store.KVDeleteRange(start, end)    // 删除范围 [start, end)
+   
+   // 范围扫描
+   store.Scan(start, end, func(k, v []byte) bool { return true })
+   store.ScanPrefix(prefix, func(k, v []byte) bool { return true })
+   
+   // 运维操作
+   store.Checkpoint(destDir)          // 创建数据库快照（备份）
+   store.Compact(start, end)          // 手动触发压缩
+   store.Metrics()                    // 获取数据库指标
+   store.DBPath()                     // 获取数据库路径
+   ```
+
+6. **路径与权限**
    - `NewPebbleStore(path, ...)` 会在 `path/` 下创建子目录：`data/` 与 `wal/`。
    - 确保进程对该目录具备可写权限，并把它放在持久化磁盘上。
 
-6. **最小验证**
+7. **最小验证**
    - 在接入方项目中：
      ```bash
      go test ./...
