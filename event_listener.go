@@ -1,6 +1,8 @@
 package raftpebbledb
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/pebble/v2"
 )
 
@@ -55,6 +57,13 @@ func (l *eventListener) FlushBegin(info pebble.FlushInfo) {
 // installed.
 func (l *eventListener) FlushEnd(info pebble.FlushInfo) {
 	if info.Err != nil {
+		// Pebble may surface a non-fatal flush error "pebble: empty table" in some edge cases.
+		// Pebble's own metamorphic tests ignore it; we treat it as an info-level event to avoid
+		// terminating the hosting process unnecessarily.
+		if strings.Contains(info.Err.Error(), "pebble: empty table") {
+			l.log.Infof("pebbledb flush end ignored error: %s\n", info.Err.Error())
+			return
+		}
 		l.log.Fatalf("pebbledb flush end error: %s\n", info.Err.Error())
 	} else {
 		l.log.Infof("pebbledb flush end %s\n", info.String())

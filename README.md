@@ -35,6 +35,25 @@ Cautions:
 2. if use `pebble.NoSync` WriteOptions which do not synchronize to disk, maybe lost data when the program crashed suddenly.
 3. if we call `Flush()` before exit process for flush datas to disk, use `pebble.NoSync` WriteOptions will not be lost datas.
 
+## Examples
+
+### KV-only example
+
+This repo includes a minimal KV-only example at `examples/kv`.
+It demonstrates `Set/Get` and `SetUint64/GetUint64`, then closes and reopens the store to verify persistence.
+
+Run with a temporary directory (auto-cleanup):
+
+```bash
+go run ./examples/kv -cleanup
+```
+
+Run with a specified directory (so you can inspect `data/` and `wal/`):
+
+```bash
+go run ./examples/kv -dir ./tmp/raftpebbledb-demo
+```
+
 ## Benchmark
 
 Benchmarks performed with Pebble v2.1.4 on Apple M4 (2026):
